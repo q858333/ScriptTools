@@ -1,6 +1,9 @@
 #!/bin/bash
 # iOS IPA 构建脚本
 # 1 -> Ad Hoc；2 -> Release（商店包，见 flutter build ipa 说明）
+#
+# 点击通知打开目录：依赖 terminal-notifier（brew install terminal-notifier）
+# 系统自带的 osascript display notification 无法绑定点击动作。
 
 set -e
 
@@ -41,9 +44,24 @@ if [ -n "$IPA_FILE" ] && [ -f "$IPA_FILE" ]; then
   echo "IPA 路径: $IPA_FILE"
   # 在 Finder 中打开 ipa 所在目录并选中该文件
   open -R "$IPA_FILE"
-  # macOS 系统通知（正文中的路径做简单转义，避免引号/反斜杠导致 osascript 失败）
-  _NOTIFY_BODY=$(printf '%s' "$IPA_FILE" | sed 's/\\/\\\\/g; s/"/\\"/g')
-  osascript -e "display notification \"${_NOTIFY_BODY}\" with title \"iOS 打包完成\""
+
+  IPA_PARENT="$(cd "$(dirname "$IPA_FILE")" && pwd)"
+
+  if command -v terminal-notifier &>/dev/null; then
+    # 点击通知：用 file:// 打开目录（terminal-notifier 的 -open 在点击时由系统打开）
+    if command -v python3 &>/dev/null; then
+      _FILE_URL=$(IPA_PARENT="$IPA_PARENT" python3 -c 'import os; from pathlib import Path; print(Path(os.environ["IPA_PARENT"]).resolve().as_uri())')
+      terminal-notifier -title "iOS 打包完成" -message "点击打开 ipa 所在目录" -open "$_FILE_URL"
+    else
+      _OPEN_CMD="open $(printf '%q' "$IPA_PARENT")"
+      terminal-notifier -title "iOS 打包完成" -message "点击打开 ipa 所在目录" -execute "$_OPEN_CMD"
+    fi
+  else
+    _NOTIFY_BODY=$(printf '%s' "$IPA_FILE" | sed 's/\\/\\\\/g; s/"/\\"/g')
+    osascript -e "display notification \"${_NOTIFY_BODY}\" with title \"iOS 打包完成\""
+    echo ""
+    echo "提示: 点击通知打开目录需安装 terminal-notifier：brew install terminal-notifier"
+  fi
 else
   echo "未在 ${IPA_DIR} 下找到 .ipa 文件，请到 Xcode / build 目录确认产物。"
   osascript -e 'display notification "未找到 ipa 文件，请查看终端输出" with title "iOS 打包结束"'
